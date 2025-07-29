@@ -1,8 +1,9 @@
 # fetch_jolts.py
-
 import io
 import sys
+from datetime import datetime
 from pathlib import Path
+
 import pandas as pd
 import requests
 
@@ -11,35 +12,30 @@ DATA_DIR = Path("data")
 RAW_PATH = DATA_DIR / "jtsjol_raw.csv"
 PROC_PATH = DATA_DIR / "jtsjol_processed.csv"
 
-
 def fetch_csv(url: str) -> str:
-    response = requests.get(url, timeout=60)
-    response.raise_for_status()
-    return response.text
-
+    r = requests.get(url, timeout=60)
+    r.raise_for_status()
+    return r.text
 
 def to_processed(csv_text: str) -> pd.DataFrame:
     df = pd.read_csv(io.StringIO(csv_text))
+    
+    # Use correct column names from FRED CSV
+    df["observation_date"] = pd.to_datetime(df["observation_date"], errors="coerce")
+    df["value"] = pd.to_numeric(df["JTSJOL"], errors="coerce")
 
-    # Rename columns to standard names
-    df.rename(columns={"observation_date": "DATE", "JTSJOL": "value"}, inplace=True)
-
-    df["DATE"] = pd.to_datetime(df["DATE"], errors="coerce")
-    df["value"] = pd.to_numeric(df["value"], errors="coerce")
-
-    # Filter from Jan 2020 onward and drop missing values
-    df = df[df["DATE"] >= pd.Timestamp("2020-01-01")].dropna(subset=["value"]).copy()
+    df = df[df["observation_date"] >= pd.Timestamp("2020-01-01")].copy()
+    df = df.dropna(subset=["value"]).reset_index(drop=True)
 
     if df.empty:
-        raise RuntimeError("No valid data available after filtering from 2020-01-01.")
+        raise RuntimeError("No rows remain after filtering from 2020-01-01.")
 
-    base_value = df.iloc[0]["value"]
-    df["month_end"] = df["DATE"].dt.strftime("%Y-%m-%d")
-    df["JOLTS"] = (df["value"] / base_value * 100).round(2)
+    base = df.loc[df.index[0], "value"]
+    df["month_end"] = df["observation_date"].dt.strftime("%Y-%m-%d")
+    df["JOLTS"] = (df["value"] / base * 100).round(2)
     df["type"] = "JOLTS"
 
     return df[["month_end", "value", "JOLTS", "type"]]
-
 
 def main():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -47,22 +43,16 @@ def main():
     try:
         csv_text = fetch_csv(FRED_CSV_URL)
     except Exception as e:
-        print(f"❌ Failed to fetch FRED CSV: {e}", file=sys.stderr)
+        print(f"ERROR: Failed to fetch FRED CSV: {e}", file=sys.stderr)
         sys.exit(1)
 
     RAW_PATH.write_text(csv_text, encoding="utf-8")
+    processed = to_processed(csv_text)
+    processed.to_csv(PROC_PATH, index=False)
 
-    try:
-        processed_df = to_processed(csv_text)
-        processed_df.to_csv(PROC_PATH, index=False)
-    except Exception as e:
-        print(f"❌ Failed to process CSV: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    print(f"✅ Wrote raw CSV: {RAW_PATH}")
-    print(f"✅ Wrote processed CSV: {PROC_PATH}")
-    print(f"✅ Rows processed: {len(processed_df)}")
-
+    print(f"Wrote: {RAW_PATH}")
+    print(f"Wrote: {PROC_PATH}")
+    print(f"Rows (processed): {len(processed)}")
 
 if __name__ == "__main__":
     main()
