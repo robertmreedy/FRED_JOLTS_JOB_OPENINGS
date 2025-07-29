@@ -1,5 +1,3 @@
-# fetch_jolts.py
-
 import io
 import sys
 from pathlib import Path
@@ -34,11 +32,15 @@ def to_processed(csv_text: str) -> pd.DataFrame:
         raise RuntimeError("No valid data available after filtering from 2020-01-01.")
 
     base_value = df.iloc[0]["value"]
-    df["month_end"] = df["DATE"].dt.strftime("%Y-%m-%d")
+
+    df["month"] = df["DATE"].dt.to_period("M").astype(str)
+    df["month_end"] = df["DATE"] + pd.offsets.MonthEnd(0)
+    df["month_end"] = df["month_end"].dt.strftime("%Y-%m-%d")
+
     df["JOLTS"] = (df["value"] / base_value * 100).round(2)
     df["type"] = "JOLTS"
 
-    return df[["month_end", "value", "JOLTS", "type"]]
+    return df[["month", "month_end", "value", "JOLTS", "type"]]
 
 
 def main():
