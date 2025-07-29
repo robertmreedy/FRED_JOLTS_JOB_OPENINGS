@@ -1,12 +1,9 @@
 # fetch_jolts.py
 import io
-import os
-import sys
-from datetime import datetime
 from pathlib import Path
-
 import pandas as pd
 import requests
+import sys
 
 FRED_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=JTSJOL"
 DATA_DIR = Path("data")
@@ -14,53 +11,65 @@ RAW_PATH = DATA_DIR / "jtsjol_raw.csv"
 PROC_PATH = DATA_DIR / "jtsjol_processed.csv"
 
 def fetch_csv(url: str) -> str:
-    # Server-side fetch; CORS is not an issue in GitHub Actions.
-    r = requests.get(url, timeout=60)
-    r.raise_for_status()
-    return r.text
+    print("🔄 Fetching CSV from FRED...")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; GitHubActionsBot/1.0)"
+    }
+    try:
+        r = requests.get(url, headers=headers, timeout=60)
+        r.raise_for_status()
+        return r.text
+    except Exception as e:
+        print(f"❌ Error fetching CSV: {e}")
+        sys.exit(1)
 
 def to_processed(csv_text: str) -> pd.DataFrame:
-    # Parse the FRED CSV
-    df = pd.read_csv(io.StringIO(csv_text))
-    # Expect columns: DATE, JTSJOL
-    # Convert date and numeric value, coerce '.' to NaN
+    print("🔍 Parsing CSV and validating structure...")
+
+    try:
+        df = pd.read_csv(io.StringIO(csv_text))
+    except Exception as e:
+        print("❌ Failed to parse CSV:", e)
+        print("🔎 CSV Preview:\n", csv_text[:500])
+        raise
+
+    if "DATE" not in df.columns or "JTSJOL" not in df.columns:
+        print("❌ Missing expected 'DATE' and 'JTSJOL' columns.")
+        print("CSV Columns:", df.columns.tolist())
+        print("🔎 CSV Preview:\n", csv_text[:500])
+        raise ValueError("Expected 'DATE' and 'JTSJOL' columns not found.")
+
     df["DATE"] = pd.to_datetime(df["DATE"], errors="coerce")
     df["value"] = pd.to_numeric(df["JTSJOL"], errors="coerce")
 
-    # Keep 2020-01-01 and later, non-null
-    df = df[df["DATE"] >= pd.Timestamp("2020-01-01")].copy()
-    df = df.dropna(subset=["value"]).reset_index(drop=True)
+    df = df[df["DATE"] >= pd.Timestamp("2020-01-01")].dropna(subset=["value"]).copy()
 
     if df.empty:
-        raise RuntimeError("No rows remain after filtering from 2020-01-01.")
+        raise ValueError("No data remaining after 2020-01-01 filter.")
 
-    base = df.loc[df.index[0], "value"]  # first value at/after 2020-01-01
+    base = df.iloc[0]["value"]
     df["month_end"] = df["DATE"].dt.strftime("%Y-%m-%d")
     df["JOLTS"] = (df["value"] / base * 100).round(2)
     df["type"] = "JOLTS"
 
-    # Final columns similar to your Observable table
     return df[["month_end", "value", "JOLTS", "type"]]
 
 def main():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-    try:
-        csv_text = fetch_csv(FRED_CSV_URL)
-    except Exception as e:
-        print(f"ERROR: Failed to fetch FRED CSV: {e}", file=sys.stderr)
-        sys.exit(1)
+    csv_text = fetch_csv(FRED_CSV_URL)
 
-    # Write raw CSV exactly as returned (for reproducibility)
     RAW_PATH.write_text(csv_text, encoding="utf-8")
+    print(f"✅ Wrote raw CSV to: {RAW_PATH}")
 
-    # Also write a processed version (index since 2020-01-01)
-    processed = to_processed(csv_text)
-    processed.to_csv(PROC_PATH, index=False)
-
-    print(f"Wrote: {RAW_PATH}")
-    print(f"Wrote: {PROC_PATH}")
-    print(f"Rows (processed): {len(processed)}")
+    try:
+        processed = to_processed(csv_text)
+        processed.to_csv(PROC_PATH, index=False)
+        print(f"✅ Wrote processed CSV to: {PROC_PATH}")
+        print(f"📈 Rows in processed CSV: {len(processed)}")
+    except Exception as e:
+        print("❌ Failed to process CSV:", e)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
