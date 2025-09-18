@@ -1,4 +1,4 @@
-name: Update JOLTS CSV
+name: Update FRED CSVs
 
 on:
   schedule:
