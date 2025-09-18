@@ -29,12 +29,10 @@ def to_processed(csv_text: str) -> pd.DataFrame:
     df = df[df["DATE"] >= pd.Timestamp("2019-01-01")].dropna(subset=["value"]).copy()
 
     if df.empty:
-        raise RuntimeError("No valid data available after filtering from 2020-01-01.")
-
-    base_value = df.iloc[0]["value"]
+        raise RuntimeError("No valid data available after filtering from 2019-01-01.")
 
     df["month"] = df["DATE"].dt.to_period("M").astype(str)
-    df["3_month_wage_growth"] = (df["value"] / base_value * 100).round(2)
+    df["3_month_wage_growth"] = (df["value"] / 100).round(3)
 
     return df[["month", "3_month_wage_growth"]]
 
