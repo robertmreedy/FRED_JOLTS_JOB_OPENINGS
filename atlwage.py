@@ -31,10 +31,10 @@ def to_processed(csv_text: str) -> pd.DataFrame:
     if df.empty:
         raise RuntimeError("No valid data available after filtering from 2019-01-01.")
 
-    df["month"] = df["DATE"].dt.to_period("M").astype(str)
+    df["date"] = df["DATE"].dt.strftime("%Y-%m-%d")
     df["3_month_wage_growth"] = (df["value"] / 100).round(3)
 
-    return df[["month", "3_month_wage_growth"]]
+    return df[["date", "3_month_wage_growth"]]
 
 
 def main():
