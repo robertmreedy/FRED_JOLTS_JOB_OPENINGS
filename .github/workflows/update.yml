@@ -2,7 +2,7 @@ name: Update JOLTS CSV
 
 on:
   schedule:
-    - cron: "0 12 * * *"   # daily 12:00 UTC
+    - cron: "0 15 * * *"   # daily 12:00 UTC
   workflow_dispatch: {}
 
 jobs:
@@ -27,6 +27,9 @@ jobs:
       - name: Fetch & build CSVs
         run: python fetch_jolts.py
 
+      - name: Run ATL Wage Script
+        run: python atlwage.py
+
       - name: Commit & push if changed
         run: |
           git config user.name "github-actions[bot]"
@@ -35,6 +38,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
-            git commit -m "Update JTSJOL data: $(date -u +'%Y-%m-%d')"
+            git commit -m "Update data: $(date -u +'%Y-%m-%d')"
             git push
           fi
